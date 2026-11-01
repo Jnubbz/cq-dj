@@ -20,6 +20,9 @@ struct Settings {
 struct AppState {
     station: Mutex<Option<Station>>,
     settings_path: PathBuf,
+    /// The update found by the last check. Installing uses exactly this one, because a second check
+    /// right after a release can hit a stale GitHub cache and report "up to date".
+    pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
 fn load(path: &PathBuf) -> Settings {
@@ -135,10 +138,19 @@ fn app_version(app: tauri::AppHandle) -> String {
 
 /// Asks GitHub whether a newer release exists.
 #[tauri::command]
-async fn check_update(app: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+async fn check_update(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<UpdateInfo>, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))?;
-    Ok(update.map(|u| UpdateInfo { version: u.version.clone(), current: u.current_version.clone(), notes: u.body.clone() }))
+    let mut pending = state.pending_update.lock().unwrap();
+    match update {
+        Some(u) => {
+            let info = UpdateInfo { version: u.version.clone(), current: u.current_version.clone(), notes: u.body.clone() };
+            *pending = Some(u);
+            Ok(Some(info))
+        }
+        // A stale "no update" answer never cancels an update we already found.
+        None => Ok(pending.as_ref().map(|u| UpdateInfo { version: u.version.clone(), current: u.current_version.clone(), notes: u.body.clone() })),
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -153,8 +165,14 @@ struct UpdateProgress {
 async fn install_update(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let station = state.station.lock().unwrap().take();
     drop(station);
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = updater.check().await.map_err(|e| e.to_string())?.ok_or("You're already up to date.")?;
+    let found = state.pending_update.lock().unwrap().clone();
+    let update = match found {
+        Some(u) => u,
+        None => {
+            let updater = app.updater().map_err(|e| e.to_string())?;
+            updater.check().await.map_err(|e| e.to_string())?.ok_or("You're already up to date.")?
+        }
+    };
     let mut downloaded = 0usize;
     let handle = app.clone();
     update
@@ -175,7 +193,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
-            app.manage(AppState { station: Mutex::new(None), settings_path: dir.join("settings.json") });
+            app.manage(AppState { station: Mutex::new(None), settings_path: dir.join("settings.json"), pending_update: Mutex::new(None) });
             Ok(())
         })
         .on_window_event(|window, event| {
