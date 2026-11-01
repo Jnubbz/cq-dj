@@ -1,0 +1,1 @@
+Vendored from https://github.com/kgoba/ft8_lib at commit 9fec6ca39886edbf96f4f5e71edc76da5074e871. Only the library sources (ft8/, fft/, common/monitor.*, common/common.h) are included. MIT license, see LICENSE.
