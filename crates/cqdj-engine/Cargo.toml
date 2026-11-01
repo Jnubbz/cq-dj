@@ -1,0 +1,11 @@
+[package]
+name = "cqdj-engine"
+description = "CQ DJ FT8 engine: encode, multi-signal transmit audio, and decode (wraps ft8_lib)"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+
+[build-dependencies]
+cc = "1"
