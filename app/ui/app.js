@@ -431,7 +431,22 @@ function onStatus(s) {
   const pos = Math.max(0, Math.min(100, ((db + 80) / 80) * 100));
   $("rx-needle").style.left = `calc(${pos}% - 2px)`;
   lastParity = s.slot_parity;
+
+  // No audio at all for a few seconds usually means macOS blocked the sound card.
+  if (db <= -119) {
+    silentSince ??= Date.now();
+    if (Date.now() - silentSince > 5000 && !silenceWarned) {
+      silenceWarned = true;
+      notice("No audio from the radio. Check that \"USB Audio CODEC\" is picked in setup, and that CQ DJ is allowed in " +
+        "System Settings › Privacy & Security › Microphone.", true);
+    }
+  } else {
+    silentSince = null;
+    if (silenceWarned) { silenceWarned = false; notice(""); }
+  }
 }
+let silentSince = null;
+let silenceWarned = false;
 
 listen("station", ({ payload: e }) => {
   switch (e.type) {

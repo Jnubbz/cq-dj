@@ -40,6 +40,12 @@ jobs:
         run: |
           npm ci
           npx tauri build --bundles app,dmg
+      - name: Check microphone permission is in the app
+        run: |
+          APP="target/release/bundle/macos/CQ DJ.app"
+          codesign -d --entitlements - "$APP" 2>&1 | tee /tmp/ent.txt
+          grep -q "com.apple.security.device.audio-input" /tmp/ent.txt || { echo "::error::app is missing the audio-input entitlement"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$APP/Contents/Info.plist" || { echo "::error::Info.plist is missing NSMicrophoneUsageDescription"; exit 1; }
       - name: Zip the app
         run: |
           cd target/release/bundle/macos

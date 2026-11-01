@@ -16,6 +16,7 @@ Pick stations yourself, or let **DJ** pick for you.
    xattr -dr com.apple.quarantine "/Applications/CQ DJ.app"
    ```
    then open it normally. When macOS asks for microphone access, click **Allow**: that's how CQ DJ hears the radio.
+   If it never asks and you get no audio, run `tccutil reset Microphone com.kn0ble.cqdj` and open CQ DJ again.
 
 ### First run
 1. **Quit WSJT-X**, since only one program can use the radio's port at a time.
