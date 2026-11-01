@@ -5,6 +5,7 @@ pub mod audio;
 pub mod cat;
 pub mod clock;
 pub mod resample;
+pub mod spectrum;
 pub mod station;
 
 pub use audio::{list_devices, AudioDeviceList};

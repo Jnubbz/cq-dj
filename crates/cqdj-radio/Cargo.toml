@@ -8,5 +8,6 @@ publish = false
 [dependencies]
 cqdj-engine = { path = "../cqdj-engine" }
 cpal = "0.18"
+rustfft = "6"
 serialport = { version = "4", default-features = false }
 serde = { version = "1", features = ["derive"] }

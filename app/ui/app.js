@@ -85,6 +85,8 @@ async function loadSettings() {
   $("lvl-val").textContent = $("lvl").value + "%";
   $("txhz").value = settings.station.tx_audio_hz ?? 1500;
   $("parity").value = settings.station.tx_parity ?? "even";
+  $("gain").value = settings.station.rx_gain_db ?? 0;
+  $("gain-val").textContent = `+${$("gain").value} dB`;
   const dial = settings.station.dial_hz ?? 14_074_000;
   $("band").value = String(dial);
   if (!settings.setup_done) openSetup();
@@ -98,6 +100,7 @@ async function saveSettings() {
   settings.station.tx_level = Number($("lvl").value) / 100;
   settings.station.tx_audio_hz = Number($("txhz").value);
   settings.station.tx_parity = $("parity").value;
+  settings.station.rx_gain_db = Number($("gain").value);
   settings.station.dial_hz = Number($("band").value);
   await invoke("save_settings", { settings });
 }
@@ -283,6 +286,23 @@ $("lvl").addEventListener("input", () => {
   cmd({ kind: "tx_level", level: Number($("lvl").value) / 100 });
 });
 $("lvl").addEventListener("change", saveSettings);
+function setGain(db) {
+  db = Math.max(0, Math.min(60, Math.round(db)));
+  $("gain").value = db;
+  $("gain-val").textContent = `+${db} dB`;
+  cmd({ kind: "rx_gain", db });
+}
+$("gain").addEventListener("input", () => setGain(Number($("gain").value)));
+$("gain").addEventListener("change", saveSettings);
+// Auto: put the band noise in the middle of the green zone (about -36 dBFS).
+let lastRawDb = -120;
+$("gain-auto").addEventListener("click", () => {
+  if (!running || lastRawDb <= -119) { log("Start the radio first, so CQ DJ can hear the band.", "warn"); return; }
+  setGain(-36 - lastRawDb);
+  saveSettings();
+  log(`Receive gain set to +${$("gain").value} dB.`);
+});
+
 $("txhz").addEventListener("change", () => {
   cmd({ kind: "tx_hz", hz: Number($("txhz").value) });
   saveSettings();
@@ -363,6 +383,8 @@ function addRow(line, parity, mine = false) {
 }
 
 function onDecodes(ev) {
+  wfLabels = ev.lines.map((l, i) => ({ freq: l.freq, call: senderOf(l.text) || "", toMe: l.to_me, row: i }));
+  drawOverlay();
   const body = $("decodes");
   const onlyCq = $("only-cq").checked;
   const sep = el("tr", "sep");
@@ -406,6 +428,119 @@ function onDecodes(ev) {
   }
 }
 
+// ---------- waterfall ----------
+
+const WF_MAX_HZ = 3000;
+const wf = $("wf");
+const wfCtx = wf.getContext("2d");
+const over = $("wf-over");
+const overCtx = over.getContext("2d");
+let wfFloor = null;          // smoothed noise floor, dB
+let wfLabels = [];           // [{ freq, call }] from the latest decode
+const PALETTE = buildPalette();
+
+function buildPalette() {
+  // dark navy -> blue -> teal -> yellow -> white
+  const stops = [[0, [5, 8, 11]], [0.25, [16, 42, 92]], [0.5, [24, 140, 160]], [0.75, [235, 200, 60]], [1, [255, 255, 240]]];
+  const out = [];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let k = 0;
+    while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+    const [t0, c0] = stops[k], [t1, c1] = stops[k + 1];
+    const f = (t - t0) / (t1 - t0);
+    out.push(c0.map((v, j) => Math.round(v + (c1[j] - v) * f)));
+  }
+  return out;
+}
+
+function renderScale() {
+  const box = $("wf-scale");
+  box.replaceChildren();
+  for (let hz = 0; hz <= WF_MAX_HZ; hz += 500) {
+    const s = el("span", null, hz === 0 ? "0 Hz" : String(hz));
+    s.style.left = `${(hz / WF_MAX_HZ) * 100}%`;
+    box.append(s);
+  }
+}
+
+function onSpectrum(e) {
+  const bins = e.line.bins;
+  const hzPer = e.line.hz_per_bin;
+  const n = Math.min(bins.length, Math.floor(WF_MAX_HZ / hzPer));
+  if (wf.width !== n) wf.width = n;
+
+  // Noise floor = 20th percentile of the line, smoothed so the picture doesn't flicker.
+  const sorted = Array.from(bins.slice(0, n)).sort((a, b) => a - b);
+  const floor = sorted[Math.floor(n * 0.2)] - 200;
+  wfFloor = wfFloor === null ? floor : wfFloor * 0.9 + floor * 0.1;
+
+  // Scroll down one row, draw the new line at the top.
+  wfCtx.drawImage(wf, 0, 1);
+  const row = wfCtx.createImageData(n, 1);
+  for (let i = 0; i < n; i++) {
+    const db = bins[i] - 200;
+    let t = (db - wfFloor + 4) / 34;
+    t = Math.max(0, Math.min(1, t));
+    let [r, g, b] = PALETTE[Math.round(t * 255)];
+    if (e.transmitting) { r = Math.min(255, r * 0.5 + 60); g = g * 0.5 + 20; b = b * 0.4; }
+    const o = i * 4;
+    row.data[o] = r; row.data[o + 1] = g; row.data[o + 2] = b; row.data[o + 3] = 255;
+  }
+  wfCtx.putImageData(row, 0, 0);
+  if (e.slot_start) {
+    wfCtx.fillStyle = "rgba(230, 237, 243, 0.25)";
+    wfCtx.fillRect(0, 0, n, 1);
+  }
+}
+
+function drawOverlay() {
+  const box = $("wf-box");
+  const dpr = window.devicePixelRatio || 1;
+  const w = box.clientWidth, h = box.clientHeight;
+  if (over.width !== Math.round(w * dpr)) { over.width = Math.round(w * dpr); over.height = Math.round(h * dpr); }
+  overCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  overCtx.clearRect(0, 0, w, h);
+  const x = (hz) => (hz / WF_MAX_HZ) * w;
+
+  // Callsigns from the last decode, at their frequencies.
+  overCtx.font = "11px ui-monospace, Menlo, monospace";
+  overCtx.textBaseline = "top";
+  const label = (text, lx, ly, color) => {
+    const tw = overCtx.measureText(text).width;
+    overCtx.fillStyle = "rgba(5, 8, 11, 0.75)";
+    overCtx.fillRect(lx - 2, ly - 1, tw + 4, 14);
+    overCtx.fillStyle = color;
+    overCtx.fillText(text, lx, ly);
+  };
+  for (const l of wfLabels) {
+    label(l.call, x(l.freq) + 2, 4 + (l.row % 3) * 15, l.toMe ? "#F5A524" : "#E6EDF3");
+  }
+
+  // Our transmit signal: a 50 Hz band starting at the TX frequency.
+  const txHz = Number($("txhz").value) || 1500;
+  overCtx.fillStyle = "rgba(245, 165, 36, 0.18)";
+  overCtx.fillRect(x(txHz), 0, x(txHz + 50) - x(txHz), h);
+  overCtx.fillStyle = "#F5A524";
+  overCtx.fillRect(x(txHz) - 1, 0, 2, h);
+  overCtx.textBaseline = "top";
+  label(`TX ${txHz}`, x(txHz) + 4, h - 18, "#F5A524");
+}
+
+$("wf-box").addEventListener("click", (ev) => {
+  const r = $("wf-box").getBoundingClientRect();
+  let hz = Math.round(((ev.clientX - r.left) / r.width) * WF_MAX_HZ / 10) * 10;
+  hz = Math.max(200, Math.min(2950, hz));
+  $("txhz").value = hz;
+  cmd({ kind: "tx_hz", hz });
+  saveSettings();
+  drawOverlay();
+});
+$("txhz").addEventListener("input", drawOverlay);
+window.addEventListener("resize", drawOverlay);
+renderScale();
+drawOverlay();
+
 // ---------- status ----------
 
 function onStatus(s) {
@@ -427,6 +562,7 @@ function onStatus(s) {
 
   // RX meter: -80..0 dBFS across the bar; green zone is about -48..-24 dBFS.
   const db = s.rx_dbfs;
+  if (!s.transmitting) lastRawDb = s.rx_raw_dbfs;
   $("rx-db").textContent = db > -119 ? `${db.toFixed(0)} dBFS` : "no audio";
   const pos = Math.max(0, Math.min(100, ((db + 80) / 80) * 100));
   $("rx-needle").style.left = `calc(${pos}% - 2px)`;
@@ -462,6 +598,9 @@ listen("station", ({ payload: e }) => {
       break;
     case "decodes":
       onDecodes(e);
+      break;
+    case "spectrum":
+      onSpectrum(e);
       break;
     case "transmit":
       $("decodes").prepend(addRow({ utc: e.utc, snr: 0, dt: 0, freq: e.freq, text: e.message, is_cq: false, to_me: false }, null, true));

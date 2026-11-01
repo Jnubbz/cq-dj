@@ -66,6 +66,9 @@ impl AudioIo for FakeAudio {
     fn rx_dbfs(&self) -> f32 {
         -30.0
     }
+    fn rx_latest(&self, n: usize) -> Vec<f32> {
+        self.incoming[..n.min(self.incoming.len())].to_vec()
+    }
     fn device_names(&self) -> (String, String) {
         ("fake in".into(), "fake out".into())
     }
@@ -146,4 +149,6 @@ fn transmits_on_time_and_decodes_the_other_slot() {
     assert_eq!(lines[0].text, "KN0BLE JA1QRX PM95");
     assert!(lines[0].to_me && !lines[0].is_cq);
     assert!(lines[0].dt.abs() < 0.2, "dt {}", lines[0].dt);
+    let lines_per_sec = events.iter().filter(|e| matches!(e, Event::Spectrum { .. })).count() as f64 / 40.0;
+    assert!(lines_per_sec > 3.0, "waterfall only {lines_per_sec:.1} lines/s");
 }

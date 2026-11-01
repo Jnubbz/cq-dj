@@ -37,6 +37,18 @@
 <div id="notice" class="notice" hidden></div>
 
 <main class="layout">
+  <section class="card waterfall-card" aria-label="Waterfall">
+    <div class="card-head">
+      <h2>Waterfall</h2>
+      <span class="hint">Click to set your transmit frequency. Amber line = you.</span>
+    </div>
+    <div class="wf" id="wf-box">
+      <canvas id="wf" width="1024" height="180"></canvas>
+      <canvas id="wf-over" class="wf-over"></canvas>
+    </div>
+    <div class="wf-scale mono" id="wf-scale"></div>
+  </section>
+
   <section class="card activity" aria-label="Band activity">
     <div class="card-head">
       <h2>Band activity</h2>
@@ -89,8 +101,14 @@
       <div class="field full">
         <span class="label">Receive level <span class="mono" id="rx-db">--</span></span>
         <div class="meter"><div class="zone"></div><div class="needle" id="rx-needle"></div></div>
-        <span class="hint">Aim for the green zone. Adjust the radio's USB audio output level if it's outside.</span>
+        <span class="hint">Aim for the green zone. Use Receive gain below, or press Auto.</span>
       </div>
+      <label class="field full">Receive gain <span class="mono" id="gain-val">+0 dB</span>
+        <span class="row tight">
+          <input type="range" id="gain" min="0" max="60" step="1" value="0">
+          <button type="button" id="gain-auto" class="btn small">Auto</button>
+        </span>
+      </label>
       <label class="field full">Transmit audio level <span class="mono" id="lvl-val">30%</span>
         <input type="range" id="lvl" min="1" max="100" value="30">
         <span class="hint">Press Tune, raise this until power stops rising, then back off a little. ALC must stay at zero.</span>

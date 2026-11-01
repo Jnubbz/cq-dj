@@ -21,6 +21,7 @@ const MAX_KEYED_SECONDS: f64 = 14.5;
 const TUNE_SECONDS: f64 = 10.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StationConfig {
     pub callsign: String,
     pub grid: String,
@@ -37,6 +38,8 @@ pub struct StationConfig {
     pub tx_level: f32,
     /// Which slots we transmit in.
     pub tx_parity: Parity,
+    /// Digital gain applied to receive audio before decoding, in dB (0-60).
+    pub rx_gain_db: f32,
 }
 
 impl Default for StationConfig {
@@ -52,6 +55,7 @@ impl Default for StationConfig {
             tx_audio_hz: 1500.0,
             tx_level: 0.3,
             tx_parity: Parity::Even,
+            rx_gain_db: 0.0,
         }
     }
 }
@@ -66,6 +70,7 @@ pub enum Command {
     SetTxAudioHz(f32),
     SetTxLevel(f32),
     SetParity(Parity),
+    SetRxGain(f32),
     Stop,
 }
 
@@ -90,7 +95,11 @@ pub enum Event {
         utc: String,
         seconds_into_slot: f64,
         slot_parity: Parity,
+        /// Receive level after gain, dBFS.
         rx_dbfs: f32,
+        /// Receive level straight from the sound card, dBFS.
+        rx_raw_dbfs: f32,
+        rx_gain_db: f32,
         transmitting: bool,
         tuning: bool,
         tx_armed: bool,
@@ -98,6 +107,8 @@ pub enum Event {
         dial_hz: u64,
     },
     Decodes { utc: String, parity: Parity, lines: Vec<DecodeLine> },
+    /// A waterfall line, about 5 per second.
+    Spectrum { line: crate::spectrum::SpectrumLine, transmitting: bool, slot_start: bool },
     Transmit { utc: String, message: String, freq: f32 },
     Log { level: String, message: String },
     Stopped { reason: String },
@@ -250,6 +261,9 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
     let mut decoded_slot = -1.0f64;
     let mut handled_tx_slot = -1.0f64;
     let mut last_status = 0.0f64;
+    let mut last_spectrum = 0.0f64;
+    let mut spectrum_slot = -1.0f64;
+    let spectrum = crate::spectrum::Spectrum::new(RX_RATE);
     let (decode_done_tx, decode_done_rx) = mpsc::channel::<Event>();
 
     let unkey = |rig: &mut Box<dyn Rig>, tx: &mut TxState, audio: &A| {
@@ -322,6 +336,7 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
                 Command::SetTxAudioHz(hz) => config.tx_audio_hz = hz.clamp(cqdj_engine::MIN_AUDIO_HZ, cqdj_engine::MAX_AUDIO_HZ),
                 Command::SetTxLevel(l) => config.tx_level = l.clamp(0.0, 1.0),
                 Command::SetParity(p) => config.tx_parity = p,
+                Command::SetRxGain(db) => config.rx_gain_db = db.clamp(0.0, 60.0),
             }
         }
         if let Some(reason) = stop {
@@ -390,7 +405,13 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
         if into >= DECODE_AT && slot != decoded_slot {
             decoded_slot = slot;
             if handled_tx_slot != slot {
-                let samples = audio.rx_since(slot, 15.0);
+                let mut samples = audio.rx_since(slot, 15.0);
+                let gain = 10f32.powf(config.rx_gain_db / 20.0);
+                if gain != 1.0 {
+                    for s in &mut samples {
+                        *s *= gain;
+                    }
+                }
                 let mycall = config.callsign.trim().to_ascii_uppercase();
                 let done = decode_done_tx.clone();
                 std::thread::spawn(move || {
@@ -424,15 +445,29 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
             on_event(e);
         }
 
+        // --- waterfall, 5 lines a second ---
+        if now - last_spectrum >= 0.2 {
+            last_spectrum = now;
+            let samples = audio.rx_latest(crate::spectrum::FFT_LEN);
+            if let Some(line) = spectrum.line(&samples, config.rx_gain_db) {
+                let slot_start = spectrum_slot != slot;
+                spectrum_slot = slot;
+                on_event(Event::Spectrum { line, transmitting: tx.keyed_at.is_some(), slot_start });
+            }
+        }
+
         // --- status for the UI, 4 times a second ---
         if now - last_status >= 0.25 {
             last_status = now;
-            let rx_dbfs = audio.rx_dbfs();
+            let rx_raw_dbfs = audio.rx_dbfs();
+            let rx_dbfs = if rx_raw_dbfs <= -119.0 { rx_raw_dbfs } else { rx_raw_dbfs + config.rx_gain_db };
             on_event(Event::Status {
                 utc: clock::utc_label(now),
                 seconds_into_slot: into,
                 slot_parity: parity,
                 rx_dbfs,
+                rx_raw_dbfs,
+                rx_gain_db: config.rx_gain_db,
                 transmitting: tx.keyed_at.is_some(),
                 tuning: tx.tune_until.is_some(),
                 tx_armed: tx.armed,

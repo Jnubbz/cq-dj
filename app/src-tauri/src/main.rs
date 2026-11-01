@@ -95,6 +95,7 @@ enum UiCommand {
     TxHz { hz: f32 },
     TxLevel { level: f32 },
     Parity { parity: Parity },
+    RxGain { db: f32 },
 }
 
 #[tauri::command]
@@ -108,6 +109,7 @@ fn station_command(state: State<AppState>, command: UiCommand) -> Result<(), Str
         UiCommand::TxHz { hz } => Command::SetTxAudioHz(hz),
         UiCommand::TxLevel { level } => Command::SetTxLevel(level),
         UiCommand::Parity { parity } => Command::SetParity(parity),
+        UiCommand::RxGain { db } => Command::SetRxGain(db),
     });
     Ok(())
 }

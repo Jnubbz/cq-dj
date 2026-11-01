@@ -80,7 +80,7 @@ input[type=range] { width: 100%; accent-color: var(--amber); }
 .row.end { justify-content: flex-end; }
 .row > input { flex: 1; min-width: 0; }
 
-.table-wrap { overflow: auto; max-height: calc(100vh - 210px); margin-top: 8px; }
+.table-wrap { overflow: auto; max-height: calc(100vh - 470px); min-height: 260px; margin-top: 8px; }
 table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 14px; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 6px 8px; position: sticky; top: 0; background: var(--panel); }
 td { padding: 5px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
@@ -121,3 +121,13 @@ dialog { background: var(--panel); color: var(--text); border: 1px solid var(--l
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 dialog .row .field { flex: 1; }
 .error { color: var(--red); }
+.row.tight { margin-top: 0; align-items: center; flex-wrap: nowrap; }
+.row.tight input[type=range] { flex: 1; }
+.waterfall-card { flex: 1 1 100%; padding-bottom: 8px; }
+.wf { position: relative; height: 180px; margin-top: 8px; border-radius: 6px; overflow: hidden; background: #05080B; cursor: crosshair; }
+.wf canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#wf { image-rendering: pixelated; }
+.wf-scale { position: relative; height: 18px; font-size: 11px; color: var(--muted); }
+.wf-scale span { position: absolute; transform: translateX(-50%); top: 3px; }
+.wf-scale span:first-child { transform: none; }
+.wf-scale span:last-child { transform: translateX(-100%); }

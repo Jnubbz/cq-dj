@@ -19,6 +19,8 @@ pub trait AudioIo {
     fn rx_since(&self, start: f64, max_secs: f64) -> Vec<f32>;
     /// Receive level over the last half second, dBFS.
     fn rx_dbfs(&self) -> f32;
+    /// The newest `n` received samples (12 kHz), fewer if not that many yet.
+    fn rx_latest(&self, n: usize) -> Vec<f32>;
     fn device_names(&self) -> (String, String);
 }
 use std::collections::VecDeque;
@@ -92,6 +94,12 @@ impl RxBuffer {
         let back = ((self.newest_at - start) * RX_RATE as f64).round().max(0.0) as usize;
         let back = back.min(self.samples.len()).min((max_secs * RX_RATE as f64) as usize);
         self.samples.iter().skip(self.samples.len() - back).copied().collect()
+    }
+
+    /// The newest `n` samples.
+    pub fn latest(&self, n: usize) -> Vec<f32> {
+        let n = n.min(self.samples.len());
+        self.samples.iter().skip(self.samples.len() - n).copied().collect()
     }
 
     /// RMS level over the last `secs` seconds, in dBFS.
@@ -171,6 +179,9 @@ impl AudioIo for Audio {
     }
     fn rx_dbfs(&self) -> f32 {
         self.rx.lock().map(|b| b.rms_dbfs(0.5)).unwrap_or(-120.0)
+    }
+    fn rx_latest(&self, n: usize) -> Vec<f32> {
+        self.rx.lock().map(|b| b.latest(n)).unwrap_or_default()
     }
     fn device_names(&self) -> (String, String) {
         (self.input_name.clone(), self.output_name.clone())
