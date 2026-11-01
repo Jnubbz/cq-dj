@@ -44,7 +44,7 @@ jobs:
           fi
       - name: Set version 0.1.${{ github.run_number }}
         run: |
-          VERSION="0.1.${{ github.run_number }}"
+          export VERSION="0.1.${{ github.run_number }}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           node -e '
             const fs = require("fs"), p = "app/src-tauri/tauri.conf.json";
@@ -52,6 +52,7 @@ jobs:
             c.version = process.env.VERSION;
             fs.writeFileSync(p, JSON.stringify(c, null, 2) + "\n");
           '
+          grep -q "\"version\": \"$VERSION\"" app/src-tauri/tauri.conf.json || { echo "::error::version not set"; exit 1; }
       - name: Install app tooling
         working-directory: app
         run: npm ci
@@ -75,7 +76,10 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
-      - name: Check the microphone permission made it into the release build
+      - name: Check the release build
         run: |
           APP="target/release/bundle/macos/CQ DJ.app"
           codesign -d --entitlements - "$APP" 2>&1 | grep -q com.apple.security.device.audio-input
+          BUILT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
+          echo "Built version $BUILT"
+          [ "$BUILT" = "$VERSION" ] || { echo "::error::built $BUILT, expected $VERSION"; exit 1; }
