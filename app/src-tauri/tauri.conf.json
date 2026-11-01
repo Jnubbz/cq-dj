@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CQ DJ",
+  "version": "0.1.0",
+  "identifier": "com.kn0ble.cqdj",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "CQ DJ",
+        "width": 1280,
+        "height": 880,
+        "minWidth": 900,
+        "minHeight": 600,
+        "backgroundColor": "#0F1419"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "Utility",
+    "shortDescription": "Multi-reply FT8 made simple",
+    "copyright": "KN0BLE",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist",
+      "hardenedRuntime": true
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEQTQxNzI4MEUzQjI5MEUKUldRT0tUc09LQmVrblFobjJpbjJ2TUpxUGs1YnVCdnM1anRVK3gzZzkzMm00cHhGRlBsVjU1MnkK",
+      "endpoints": [
+        "https://github.com/Jnubbz/cq-dj/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["crates/cqdj-engine"]
+members = ["crates/cqdj-engine", "crates/cqdj-radio", "app/src-tauri"]
+# `cargo test` at the root skips the app (it needs the desktop toolkit to build).
+default-members = ["crates/cqdj-engine", "crates/cqdj-radio"]
 
 [workspace.package]
 edition = "2021"

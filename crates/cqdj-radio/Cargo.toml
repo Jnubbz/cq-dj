@@ -1,0 +1,13 @@
+[package]
+name = "cqdj-radio"
+description = "CQ DJ radio layer: audio I/O, Yaesu CAT, FT8 slot timing, and the station loop"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+cqdj-engine = { path = "../cqdj-engine" }
+cpal = "0.18"
+rustfft = "6"
+serialport = { version = "4", default-features = false }
+serde = { version = "1", features = ["derive"] }
