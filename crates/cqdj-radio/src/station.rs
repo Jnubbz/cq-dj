@@ -40,6 +40,9 @@ pub struct StationConfig {
     pub tx_parity: Parity,
     /// Digital gain applied to receive audio before decoding, in dB (0-60).
     pub rx_gain_db: f32,
+    /// Where to append every decode and transmission (WSJT-X ALL.TXT format). Set by the app.
+    #[serde(skip)]
+    pub all_txt_path: Option<std::path::PathBuf>,
 }
 
 impl Default for StationConfig {
@@ -56,6 +59,7 @@ impl Default for StationConfig {
             tx_level: 0.3,
             tx_parity: Parity::Even,
             rx_gain_db: 0.0,
+            all_txt_path: None,
         }
     }
 }
@@ -106,10 +110,10 @@ pub enum Event {
         tx_message: String,
         dial_hz: u64,
     },
-    Decodes { utc: String, parity: Parity, lines: Vec<DecodeLine> },
+    Decodes { utc: String, parity: Parity, lines: Vec<DecodeLine>, slot_start: f64, dial_hz: u64 },
     /// A waterfall line, about 5 per second.
     Spectrum { line: crate::spectrum::SpectrumLine, transmitting: bool, slot_start: bool },
-    Transmit { utc: String, message: String, freq: f32 },
+    Transmit { utc: String, message: String, freq: f32, slot_start: f64, dial_hz: u64 },
     Log { level: String, message: String },
     Stopped { reason: String },
 }
@@ -386,7 +390,17 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
                                 std::thread::sleep(Duration::from_secs_f64(wait));
                             }
                             audio.play(samples);
-                            on_event(Event::Transmit { utc: clock::utc_label(slot), message: tx.message.clone(), freq: config.tx_audio_hz });
+                            if let Some(path) = &config.all_txt_path {
+                                let line = crate::logbook::all_txt_tx(slot as i64, config.dial_hz, config.tx_audio_hz, &tx.message);
+                                let _ = crate::logbook::append_line(path, &line);
+                            }
+                            on_event(Event::Transmit {
+                                utc: clock::utc_label(slot),
+                                message: tx.message.clone(),
+                                freq: config.tx_audio_hz,
+                                slot_start: slot,
+                                dial_hz: config.dial_hz,
+                            });
                         }
                         Err(e) => log(&on_event, "error", format!("Couldn't key the radio: {e}")),
                     }
@@ -414,6 +428,7 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
                 }
                 let mycall = config.callsign.trim().to_ascii_uppercase();
                 let done = decode_done_tx.clone();
+                let dial_hz = config.dial_hz;
                 std::thread::spawn(move || {
                     if samples.len() < (10 * RX_RATE) as usize {
                         return; // not enough audio yet (just started)
@@ -437,11 +452,20 @@ fn run<A: AudioIo>(config: StationConfig, audio: A, mut rig: Box<dyn Rig>, comma
                             .collect(),
                         Err(_) => Vec::new(),
                     };
-                    let _ = done.send(Event::Decodes { utc, parity: Parity::of_slot(slot), lines });
+                    let _ = done.send(Event::Decodes { utc, parity: Parity::of_slot(slot), lines, slot_start: slot, dial_hz });
                 });
             }
         }
         while let Ok(e) = decode_done_rx.try_recv() {
+            if let (Some(path), Event::Decodes { lines, slot_start, dial_hz, .. }) = (&config.all_txt_path, &e) {
+                for l in lines {
+                    let line = crate::logbook::all_txt_rx(*slot_start as i64, *dial_hz, l.snr, l.dt, l.freq, &l.text);
+                    if let Err(err) = crate::logbook::append_line(path, &line) {
+                        log(&on_event, "warn", format!("Couldn't write ALL.TXT: {err}"));
+                        break;
+                    }
+                }
+            }
             on_event(e);
         }
 

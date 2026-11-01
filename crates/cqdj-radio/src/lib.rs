@@ -4,6 +4,7 @@
 pub mod audio;
 pub mod cat;
 pub mod clock;
+pub mod logbook;
 pub mod resample;
 pub mod spectrum;
 pub mod station;

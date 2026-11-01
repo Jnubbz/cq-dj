@@ -89,7 +89,10 @@ fn transmits_on_time_and_decodes_the_other_slot() {
     // Transmit in the next slot.
     let now = clock::now_secs();
     let tx_slot = clock::slot_start(now) + 15.0;
+    let all_txt = std::env::temp_dir().join(format!("cqdj-all-{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&all_txt);
     let config = StationConfig {
+        all_txt_path: Some(all_txt.clone()),
         callsign: "KN0BLE".into(),
         grid: "EL98".into(),
         tx_parity: Parity::of_slot(tx_slot),
@@ -149,6 +152,19 @@ fn transmits_on_time_and_decodes_the_other_slot() {
     assert_eq!(lines[0].text, "KN0BLE JA1QRX PM95");
     assert!(lines[0].to_me && !lines[0].is_cq);
     assert!(lines[0].dt.abs() < 0.2, "dt {}", lines[0].dt);
+    let all = std::fs::read_to_string(&all_txt).expect("ALL.TXT not written");
+    let all_lines: Vec<&str> = all.lines().collect();
+    println!("{all}");
+    let stamp = |t: f64| {
+        let (y, mo, d, h, mi, s) = cqdj_radio::logbook::utc_parts(t as i64);
+        format!("{:02}{:02}{:02}_{:02}{:02}{:02}", y % 100, mo, d, h, mi, s)
+    };
+    let tx_line = format!("{}    14.074 Tx FT8      0  0.0 1500 CQ KN0BLE EL98", stamp(tx_slot));
+    let rx_line = format!("{}    14.074 Rx FT8 ", stamp(rx_slot));
+    assert!(all_lines.contains(&tx_line.as_str()), "missing {tx_line}");
+    assert!(all_lines.iter().any(|l| l.starts_with(&rx_line) && l.ends_with(" 1200 KN0BLE JA1QRX PM95")), "missing rx line");
+    assert!(!all_lines.iter().any(|l| l.starts_with(&format!("{} ", stamp(tx_slot))) && l.contains(" Rx ")), "decoded own TX slot");
+    let _ = std::fs::remove_file(&all_txt);
     let lines_per_sec = events.iter().filter(|e| matches!(e, Event::Spectrum { .. })).count() as f64 / 40.0;
     assert!(lines_per_sec > 3.0, "waterfall only {lines_per_sec:.1} lines/s");
 }

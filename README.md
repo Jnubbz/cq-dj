@@ -39,6 +39,16 @@ You only do this once. Every merge to `main` publishes a new signed release, and
       offers the standard messages. The next one is outlined after each reply. Click it to send.
 - [ ] **Stop TX** unkeys immediately. Closing the window also unkeys.
 
+### Logging
+- When a QSO finishes (they send RR73 after your report, or you send RR73/73), CQ DJ shows **Log this QSO?**,
+  already filled in. Turn on **Log automatically** in settings to skip the question.
+- Every QSO goes into `cqdj_log.adi` (ADIF 3.1.4). Every decode and transmission goes into `ALL.TXT`, in the same
+  format WSJT-X uses. Both are in the folder that **Open log folder** shows
+  (`~/Library/Application Support/com.kn0ble.cqdj/` on a Mac).
+- **QRZ:** paste your logbook API key in settings (QRZ: My Logbook › Settings), click **Test**, and each QSO uploads
+  as it's logged. QRZ uploads need a QRZ subscription.
+- Stations you've already logged show **worked** (or **worked on 20m**) in Band activity.
+
 Safety: the transmitter is never keyed for longer than 14.5 s per slot. A watchdog unkeys it if anything goes wrong.
 
 ## What it will do
@@ -131,7 +141,7 @@ The matching public key is in `app/src-tauri/tauri.conf.json`. Updates signed wi
 3. Run mode, one slot: full auto-sequenced QSO
 4. Multi-slot Run (2–5)
 5. DJ: I pick / DJ picks, first come first served
-6. Logging: ADIF + QRZ logbook
+6. ~~Logging: ADIF, ALL.TXT, QRZ logbook~~ ✔
 7. DX, Grid and POTA hunting; Hunt style
 8. World Radio League upload; Windows build
 

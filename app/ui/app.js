@@ -80,6 +80,8 @@ function nextStep(text) {
 async function loadSettings() {
   settings = await invoke("get_settings");
   if (!settings.station) settings.station = {};
+  settings.log = Object.assign({ qrz_api_key: "", qrz_upload: false, auto_log: false, tx_power_w: null }, settings.log || {});
+  loadWorked();
   renderHeader();
   $("lvl").value = Math.round((settings.station.tx_level ?? 0.3) * 100);
   $("lvl-val").textContent = $("lvl").value + "%";
@@ -129,6 +131,10 @@ async function openSetup() {
   none.value = "";
   fillSelect($("s-port"), ports, s.cat_port ?? (ports[0] || ""), none);
   $("s-baud").value = String(s.cat_baud || 38400);
+  $("s-qrz").value = settings.log.qrz_api_key || "";
+  $("s-qrz-up").checked = !!settings.log.qrz_upload;
+  $("s-autolog").checked = !!settings.log.auto_log;
+  $("s-pwr").value = settings.log.tx_power_w ?? "";
   $("setup").showModal();
 }
 
@@ -152,6 +158,18 @@ $("s-find").addEventListener("click", async () => {
 
 $("s-cancel").addEventListener("click", () => $("setup").close());
 
+$("s-qrz-test").addEventListener("click", async () => {
+  const key = $("s-qrz").value.trim();
+  if (!key) { $("s-qrz-msg").textContent = "Paste your QRZ logbook API key first."; return; }
+  $("s-qrz-msg").textContent = "Asking QRZ…";
+  try {
+    $("s-qrz-msg").textContent = await invoke("test_qrz", { key, myCall: $("s-call").value.trim().toUpperCase() || me() });
+    $("s-qrz-up").checked = true;
+  } catch (e) {
+    $("s-qrz-msg").textContent = String(e);
+  }
+});
+
 $("setup-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const call = $("s-call").value.trim().toUpperCase();
@@ -171,6 +189,12 @@ $("setup-form").addEventListener("submit", async (ev) => {
     cat_port: $("s-port").value || null,
     cat_baud: Number($("s-baud").value),
   });
+  settings.log = {
+    qrz_api_key: $("s-qrz").value.trim(),
+    qrz_upload: $("s-qrz-up").checked && $("s-qrz").value.trim() !== "",
+    auto_log: $("s-autolog").checked,
+    tx_power_w: $("s-pwr").value ? Number($("s-pwr").value) : null,
+  };
   settings.setup_done = true;
   await saveSettings();
   renderHeader();
@@ -246,6 +270,11 @@ async function arm(message) {
     return;
   }
   armedMessage = message.toUpperCase();
+  if (work && armedMessage.startsWith(work.call + " ")) {
+    const last = armedMessage.split(/\s+/).pop();
+    if (/^R?[+-]\d\d$/.test(last)) work.rstSent = last.replace(/^R/, "");
+    work.timeOn ??= Date.now();
+  }
   await cmd({ kind: "tx", enabled: true, message: armedMessage });
   renderTx(true, false);
 }
@@ -323,11 +352,113 @@ $("band").addEventListener("change", () => {
   saveSettings();
 });
 
+// ---------- logbook ----------
+
+let worked = new Set();       // "CALL|band"
+let workedAny = new Set();    // "CALL"
+let sessionCount = 0;
+
+const bandName = () => (BANDS.find(([, hz]) => String(hz) === $("band").value) || ["?"])[0];
+
+async function loadWorked() {
+  try {
+    const list = await invoke("worked_list");
+    for (const [call, band] of list) { worked.add(`${call}|${band}`); workedAny.add(call); }
+  } catch (_) { /* no log yet */ }
+}
+
+function workedTag(call) {
+  if (!call) return null;
+  if (worked.has(`${call}|${bandName()}`)) return `worked on ${bandName()}`;
+  if (workedAny.has(call)) return "worked";
+  return null;
+}
+
+// Show the log card (or log right away if auto-log is on) once per QSO.
+function offerLog() {
+  if (!work || work.logOffered) return;
+  work.logOffered = true;
+  const qso = {
+    call: work.call, grid: work.grid || "", rst_sent: work.rstSent || "", rst_rcvd: work.rstRcvd || "",
+    time_on: Math.floor((work.timeOn || Date.now()) / 1000), time_off: Math.floor(Date.now() / 1000),
+    freq_hz: Number($("band").value) + Number($("txhz").value),
+    my_call: me(), my_grid: (settings.station.grid || "").toUpperCase(),
+    tx_power_w: settings.log.tx_power_w ?? null, comment: "",
+  };
+  if (settings.log.auto_log) return saveQso(qso);
+  pendingQso = qso;
+  $("lg-call").value = qso.call; $("lg-grid").value = qso.grid;
+  $("lg-sent").value = qso.rst_sent; $("lg-rcvd").value = qso.rst_rcvd;
+  $("logcard").hidden = false;
+}
+let pendingQso = null;
+
+async function saveQso(qso) {
+  try {
+    const r = await invoke("log_qso", { qso });
+    worked.add(`${qso.call}|${bandName()}`); workedAny.add(qso.call);
+    sessionCount++;
+    $("log-count").textContent = `${sessionCount} QSO${sessionCount === 1 ? "" : "s"} logged this session.`;
+    const li = el("li", "qso");
+    const t = new Date(qso.time_off * 1000).toISOString().slice(11, 16);
+    li.append(el("span", null, `${t}  ${qso.call.padEnd(8)} ${qso.grid.padEnd(4)} ${qso.rst_sent}/${qso.rst_rcvd}`));
+    let status = el("span", "ok", "saved");
+    if (r.qrz) {
+      if (r.qrz.Ok && (r.qrz.Ok.ok || r.qrz.Ok.duplicate)) status = el("span", "ok", r.qrz.Ok.duplicate ? "already on QRZ" : "saved · QRZ");
+      else {
+        const why = r.qrz.Err || r.qrz.Ok?.reason || "upload failed";
+        status = el("span", "bad", "saved · QRZ failed");
+        log(`QRZ upload for ${qso.call} failed: ${why}`, "warn");
+      }
+    }
+    li.append(status);
+    $("qsos").prepend(li);
+    while ($("qsos").children.length > 15) $("qsos").lastChild.remove();
+    log(`Logged ${qso.call} (${qso.rst_sent} / ${qso.rst_rcvd}).`);
+  } catch (e) {
+    log(String(e), "error");
+    notice(String(e), true);
+  }
+}
+
+$("lg-save").addEventListener("click", () => {
+  if (!pendingQso) return;
+  const q = Object.assign({}, pendingQso, {
+    call: $("lg-call").value.trim().toUpperCase(), grid: $("lg-grid").value.trim().toUpperCase(),
+    rst_sent: $("lg-sent").value.trim(), rst_rcvd: $("lg-rcvd").value.trim(),
+  });
+  $("logcard").hidden = true;
+  pendingQso = null;
+  saveQso(q);
+});
+$("lg-skip").addEventListener("click", () => { $("logcard").hidden = true; pendingQso = null; });
+$("open-logs").addEventListener("click", async () => {
+  try { const dir = await invoke("open_log_folder"); log(`Logs are in ${dir}`); } catch (e) { log(String(e), "error"); }
+});
+
+// What a message from the station we're working tells us.
+function absorb(text) {
+  if (!work) return;
+  const last = text.trim().split(/\s+/).pop();
+  if (/^[A-R]{2}\d\d$/.test(last) && last !== "RR73") work.grid = last;
+  else if (/^[+-]\d\d$/.test(last)) work.rstRcvd = last;
+  else if (/^R[+-]\d\d$/.test(last)) work.rstRcvd = last.slice(1);
+  else if (last === "RR73" || last === "RRR") work.theyConfirmed = true;
+  work.timeOn ??= Date.now();
+}
+
 // ---------- working a station ----------
 
-function selectStation(call, snr, parity) {
+function selectStation(call, snr, parity, text) {
   if (!call || call === me()) return;
+  if (work && work.call === call) { work.snr = snr; work.parity = parity; if (text) absorb(text); return renderWorking(null); }
   work = { call, snr, parity };
+  if (text) {
+    const last = text.trim().split(/\s+/).pop();
+    if (/^[A-R]{2}\d\d$/.test(last) && last !== "RR73") work.grid = last;
+    if (!text.startsWith("CQ ")) absorb(text);
+  }
+  $("logcard").hidden = true;
   // Answer in the opposite slot to theirs.
   const ours = parity === "even" ? "odd" : "even";
   $("parity").value = ours;
@@ -373,9 +504,13 @@ function addRow(line, parity, mine = false) {
     el("td", "msg", line.text),
   );
   if (!mine) {
+    const tag = workedTag(senderOf(line.text));
+    if (tag && (line.is_cq || line.to_me)) tr.lastChild.append(el("span", "b4", tag));
+  }
+  if (!mine) {
     tr.addEventListener("click", () => {
       const call = senderOf(line.text);
-      selectStation(call, line.snr, parity);
+      selectStation(call, line.snr, parity, line.text);
       if (line.to_me) renderWorking(nextStep(line.text));
     });
   }
@@ -409,7 +544,7 @@ function onDecodes(ev) {
     for (const l of calls) {
       const li = el("li", null, `${fmtUtc(l.utc)}  ${String(l.snr).padStart(3)}  ${l.text}`);
       li.addEventListener("click", () => {
-        selectStation(senderOf(l.text), l.snr, ev.parity);
+        selectStation(senderOf(l.text), l.snr, ev.parity, l.text);
         renderWorking(nextStep(l.text));
       });
       ul.prepend(li);
@@ -420,6 +555,9 @@ function onDecodes(ev) {
       if (work && from === work.call) {
         const next = nextStep(l.text);
         work.snr = l.snr;
+        absorb(l.text);
+        // They confirmed (RR73/RRR) after our report: the QSO counts. Offer to log it.
+        if (work.theyConfirmed && work.rstSent) offerLog();
         renderWorking(next);
         const names = { report: "send their report", rreport: "send Roger + report", rr73: "send RR73", "73": "send 73" };
         log(`${from} sent "${l.text.split(/\s+/).slice(2).join(" ")}".` + (next ? ` Next: ${names[next]}.` : " QSO complete."));
@@ -604,6 +742,7 @@ listen("station", ({ payload: e }) => {
       break;
     case "transmit":
       $("decodes").prepend(addRow({ utc: e.utc, snr: 0, dt: 0, freq: e.freq, text: e.message, is_cq: false, to_me: false }, null, true));
+      if (work && e.message.startsWith(`${work.call} ${me()} `) && /(RR73|RRR|73)$/.test(e.message) && work.rstRcvd) offerLog();
       break;
     case "log":
       log(e.message, e.level);
