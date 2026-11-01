@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct Settings {
@@ -120,8 +121,58 @@ fn check_message(message: String) -> Result<(), String> {
     cqdj_engine::encode_tones(&message).map(|_| ()).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+struct UpdateInfo {
+    version: String,
+    current: String,
+    notes: Option<String>,
+}
+
+#[tauri::command]
+fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+/// Asks GitHub whether a newer release exists.
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<Option<UpdateInfo>, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))?;
+    Ok(update.map(|u| UpdateInfo { version: u.version.clone(), current: u.current_version.clone(), notes: u.body.clone() }))
+}
+
+#[derive(Clone, Serialize)]
+struct UpdateProgress {
+    downloaded: usize,
+    total: Option<u64>,
+}
+
+/// Downloads the update, checks its signature, installs it and restarts CQ DJ.
+/// The radio is stopped (and unkeyed) first.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let station = state.station.lock().unwrap().take();
+    drop(station);
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?.ok_or("You're already up to date.")?;
+    let mut downloaded = 0usize;
+    let handle = app.clone();
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk;
+                let _ = handle.emit("update_progress", UpdateProgress { downloaded, total });
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| format!("Update failed: {e}"))?;
+    app.restart();
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from("."));
             app.manage(AppState { station: Mutex::new(None), settings_path: dir.join("settings.json") });
@@ -145,7 +196,10 @@ fn main() {
             start_station,
             stop_station,
             station_command,
-            check_message
+            check_message,
+            app_version,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running CQ DJ");

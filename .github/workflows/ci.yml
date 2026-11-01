@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -39,7 +37,8 @@ jobs:
         working-directory: app
         run: |
           npm ci
-          npx tauri build --bundles app,dmg
+          # Test builds aren't signed for the updater; releases are (release.yml).
+          npx tauri build --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - name: Check microphone permission is in the app
         run: |
           APP="target/release/bundle/macos/CQ DJ.app"

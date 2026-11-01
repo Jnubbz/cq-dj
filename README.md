@@ -9,14 +9,17 @@ Pick stations yourself, or let **DJ** pick for you.
 ## Trying it on the radio (FT-710 + Mac)
 
 ### Install
-1. Open the latest successful **CI** run under the repo's **Actions** tab and download the **CQ-DJ-mac** artifact.
-2. Unzip it, open the `.dmg` and drag **CQ DJ** to Applications.
+1. Download the `.dmg` from the latest [release](https://github.com/Jnubbz/cq-dj/releases/latest).
+2. Open it and drag **CQ DJ** to Applications.
 3. The app isn't signed by Apple yet, so macOS will block it the first time. In Terminal, run:
    ```
    xattr -dr com.apple.quarantine "/Applications/CQ DJ.app"
    ```
    then open it normally. When macOS asks for microphone access, click **Allow**: that's how CQ DJ hears the radio.
    If it never asks and you get no audio, run `tccutil reset Microphone com.kn0ble.cqdj` and open CQ DJ again.
+
+You only do this once. Every merge to `main` publishes a new signed release, and CQ DJ offers
+**Install and restart** when one is available. You can also use **Check for updates** in settings.
 
 ### First run
 1. **Quit WSJT-X**, since only one program can use the radio's port at a time.
@@ -113,6 +116,13 @@ The tests check:
 - Yaesu CAT commands, receive resampling (48/44.1/96 kHz → 12 kHz) and NTP parsing
 
 CI runs these on Linux and macOS for every push, and builds the Mac app.
+
+## Releases
+
+`.github/workflows/release.yml` runs on every push to `main`. It tests, builds the Mac app, and signs the
+update with the Tauri updater key. Then it publishes release `v0.1.<run number>` with a `latest.json` that the app checks.
+It needs two repository secrets: `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+The matching public key is in `app/src-tauri/tauri.conf.json`. Updates signed with any other key are refused.
 
 ## Roadmap
 

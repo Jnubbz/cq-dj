@@ -43,6 +43,15 @@
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist",
       "hardenedRuntime": true
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlEQTQxNzI4MEUzQjI5MEUKUldRT0tUc09LQmVrblFobjJpbjJ2TUpxUGs1YnVCdnM1anRVK3gzZzkzMm00cHhGRlBsVjU1MnkK",
+      "endpoints": [
+        "https://github.com/Jnubbz/cq-dj/releases/latest/download/latest.json"
+      ]
     }
   }
 }

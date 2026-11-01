@@ -131,3 +131,5 @@ dialog .row .field { flex: 1; }
 .wf-scale span { position: absolute; transform: translateX(-50%); top: 3px; }
 .wf-scale span:first-child { transform: none; }
 .wf-scale span:last-child { transform: translateX(-100%); }
+.update { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 18px 0; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--teal); background: #0D2422; }
+.update span { flex: 1; }

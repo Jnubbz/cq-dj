@@ -617,6 +617,51 @@ listen("station", ({ payload: e }) => {
   }
 });
 
+// ---------- updates ----------
+
+let pendingUpdate = null;
+
+async function checkForUpdate(manual) {
+  try {
+    const u = await invoke("check_update");
+    if (u) {
+      pendingUpdate = u;
+      $("update-text").textContent = `CQ DJ ${u.version} is ready (you have ${u.current}). Installing stops the radio for a moment.`;
+      $("update").hidden = false;
+      if (manual) $("s-version").textContent = `Version ${u.version} is available.`;
+    } else if (manual) {
+      $("s-version").textContent = `You're up to date (version ${await invoke("app_version")}).`;
+    }
+  } catch (e) {
+    if (manual) $("s-version").textContent = String(e);
+  }
+}
+
+$("update-later").addEventListener("click", () => { $("update").hidden = true; });
+$("update-go").addEventListener("click", async () => {
+  $("update-go").disabled = true;
+  $("update-later").disabled = true;
+  $("update-text").textContent = "Downloading the update…";
+  try {
+    await invoke("install_update"); // restarts the app when done
+  } catch (e) {
+    $("update-text").textContent = String(e);
+    $("update-go").disabled = false;
+    $("update-later").disabled = false;
+  }
+});
+listen("update_progress", ({ payload: p }) => {
+  const mb = (p.downloaded / 1e6).toFixed(1);
+  const pct = p.total ? ` (${Math.round((p.downloaded / p.total) * 100)}%)` : "";
+  $("update-text").textContent = `Downloading the update… ${mb} MB${pct}`;
+});
+$("s-update").addEventListener("click", () => { $("s-version").textContent = "Checking…"; checkForUpdate(true); });
+
+invoke("app_version").then((v) => { $("s-version").textContent = `Version ${v}`; });
+// Check a few seconds after launch, then every 6 hours.
+setTimeout(() => checkForUpdate(false), 4000);
+setInterval(() => checkForUpdate(false), 6 * 3600 * 1000);
+
 window.addEventListener("beforeunload", () => { invoke("stop_station"); });
 
 loadSettings().catch((e) => notice("Couldn't load settings: " + e, true));

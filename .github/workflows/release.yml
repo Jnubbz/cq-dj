@@ -1,0 +1,81 @@
+name: Release
+
+# Every merge to main becomes a signed release (v0.1.<run number>).
+# CQ DJ checks this repo's latest release and offers to install it.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test engine and radio layer
+        run: cargo test --release -- --include-ignored
+
+  release-macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check signing secrets are set
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secrets (see README, Releases)."
+            exit 1
+          fi
+      - name: Set version 0.1.${{ github.run_number }}
+        run: |
+          VERSION="0.1.${{ github.run_number }}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          node -e '
+            const fs = require("fs"), p = "app/src-tauri/tauri.conf.json";
+            const c = JSON.parse(fs.readFileSync(p, "utf8"));
+            c.version = process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(c, null, 2) + "\n");
+          '
+      - name: Install app tooling
+        working-directory: app
+        run: npm ci
+      - name: Build, sign and publish the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tauriScript: npx tauri
+          args: --bundles app,dmg
+          tagName: v${{ env.VERSION }}
+          releaseName: CQ DJ ${{ env.VERSION }}
+          releaseBody: |
+            Built from ${{ github.sha }}.
+            First install: download the .dmg below, drag CQ DJ to Applications, then run
+            `xattr -dr com.apple.quarantine "/Applications/CQ DJ.app"` once.
+            After that, CQ DJ updates itself.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+      - name: Check the microphone permission made it into the release build
+        run: |
+          APP="target/release/bundle/macos/CQ DJ.app"
+          codesign -d --entitlements - "$APP" 2>&1 | grep -q com.apple.security.device.audio-input

@@ -34,6 +34,11 @@
   </button>
 </header>
 
+<div id="update" class="update" hidden>
+  <span id="update-text">A new version of CQ DJ is ready.</span>
+  <button id="update-later" class="btn small">Later</button>
+  <button id="update-go" class="btn primary small">Install and restart</button>
+</div>
 <div id="notice" class="notice" hidden></div>
 
 <main class="layout">
@@ -154,6 +159,10 @@
     <div class="row">
       <button type="button" id="s-find" class="btn">Find my radio</button>
       <span class="hint" id="s-find-msg">The FT-710 shows two USB ports; only one answers. Not sure which? Click Find my radio, or use the same port and speed as WSJT-X.</span>
+    </div>
+    <div class="row">
+      <button type="button" id="s-update" class="btn">Check for updates</button>
+      <span class="hint" id="s-version"></span>
     </div>
     <p class="error" id="s-error" hidden></p>
     <div class="row end">
