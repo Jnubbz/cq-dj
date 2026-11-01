@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,7 +18,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build --release --all-targets
-      - name: Test
-        run: cargo test --release
+      - name: Linux audio/serial headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Test engine and radio layer (includes the 45 s real-time station test)
+        run: cargo test --release -- --include-ignored
+
+  app-macos:
+    name: Build Mac app
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build CQ DJ.app and .dmg (Apple Silicon)
+        working-directory: app
+        run: |
+          npm ci
+          npx tauri build --bundles app,dmg
+      - name: Zip the app
+        run: |
+          cd target/release/bundle/macos
+          ditto -c -k --keepParent "CQ DJ.app" "$GITHUB_WORKSPACE/CQ-DJ-mac.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CQ-DJ-mac
+          path: |
+            target/release/bundle/dmg/*.dmg
+            CQ-DJ-mac.zip
+          if-no-files-found: error

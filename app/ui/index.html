@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CQ DJ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="18" cy="18" r="15"></circle><circle cx="18" cy="18" r="9"></circle><circle cx="18" cy="18" r="2.5" fill="currentColor"></circle><path d="M28 6 L22 14"></path></svg>
+    <div>
+      <div class="name">CQ DJ</div>
+      <div class="me mono" id="me">Not set up</div>
+    </div>
+  </div>
+  <label class="field">Band
+    <select id="band"></select>
+  </label>
+  <div class="field">
+    <span class="label">UTC</span>
+    <span class="mono big" id="utc">--:--:--</span>
+  </div>
+  <div class="field cycle">
+    <span class="label" id="cycle-label">Not running</span>
+    <div class="cycle-track"><div class="cycle-fill" id="cycle-fill"></div></div>
+  </div>
+  <span class="pill" id="pill">OFF</span>
+  <div class="spacer"></div>
+  <button id="power" class="btn primary">Start radio</button>
+  <button id="settings-btn" class="btn icon" aria-label="Settings">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+  </button>
+</header>
+
+<div id="notice" class="notice" hidden></div>
+
+<main class="layout">
+  <section class="card activity" aria-label="Band activity">
+    <div class="card-head">
+      <h2>Band activity</h2>
+      <label class="check"><input type="checkbox" id="only-cq"> Only CQs and calls to me</label>
+    </div>
+    <p class="hint">Click a station to work it.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>UTC</th><th>dB</th><th>DT</th><th>Hz</th><th>Message</th></tr></thead>
+        <tbody id="decodes"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="card" aria-label="Transmit">
+      <h2>Transmit</h2>
+      <div class="now-sending">
+        <span class="label">Next transmission</span>
+        <span class="mono msg" id="tx-msg">Nothing armed</span>
+        <span class="label" id="tx-slot-label"></span>
+      </div>
+      <div class="row">
+        <button id="cq" class="btn primary wide">Call CQ</button>
+        <button id="halt" class="btn danger">Stop TX</button>
+        <button id="tune" class="btn">Tune</button>
+      </div>
+      <div id="working" class="working" hidden>
+        <div class="working-head">
+          <span>Working <strong class="mono" id="work-call"></strong> <span class="label" id="work-info"></span></span>
+          <button id="work-clear" class="btn small">Clear</button>
+        </div>
+        <div class="quick" id="quick"></div>
+      </div>
+      <label class="field full">Custom message
+        <span class="row">
+          <input id="custom" class="mono" maxlength="37" placeholder="e.g. CQ POTA KN0BLE EL98" autocomplete="off" spellcheck="false">
+          <button id="custom-send" class="btn">Send</button>
+        </span>
+      </label>
+    </section>
+
+    <section class="card" aria-label="Calling you">
+      <h2>Calling you</h2>
+      <ul id="calls" class="calls"><li class="empty">No one yet.</li></ul>
+    </section>
+
+    <section class="card" aria-label="Levels">
+      <h2>Levels</h2>
+      <div class="field full">
+        <span class="label">Receive level <span class="mono" id="rx-db">--</span></span>
+        <div class="meter"><div class="zone"></div><div class="needle" id="rx-needle"></div></div>
+        <span class="hint">Aim for the green zone. Adjust the radio's USB audio output level if it's outside.</span>
+      </div>
+      <label class="field full">Transmit audio level <span class="mono" id="lvl-val">30%</span>
+        <input type="range" id="lvl" min="1" max="100" value="30">
+        <span class="hint">Press Tune, raise this until power stops rising, then back off a little. ALC must stay at zero.</span>
+      </label>
+      <div class="row">
+        <label class="field">Transmit at (Hz)
+          <input type="number" id="txhz" min="200" max="2950" step="10" value="1500">
+        </label>
+        <label class="field">Transmit in
+          <select id="parity">
+            <option value="even">1st slot (:00 / :30)</option>
+            <option value="odd">2nd slot (:15 / :45)</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Messages">
+      <h2>What's happening</h2>
+      <ul id="log" class="log"></ul>
+    </section>
+  </aside>
+</main>
+
+<dialog id="setup">
+  <form method="dialog" id="setup-form">
+    <h2>Set up CQ DJ</h2>
+    <p class="hint">You only do this once. Close WSJT-X first so CQ DJ can use the radio.</p>
+    <div class="row">
+      <label class="field">Your callsign <input id="s-call" class="mono" required maxlength="11" autocomplete="off" spellcheck="false"></label>
+      <label class="field">Grid square <input id="s-grid" class="mono" required maxlength="6" placeholder="EL98" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <label class="field full">Radio's sound card: listen from <select id="s-in"></select></label>
+    <label class="field full">Radio's sound card: send to <select id="s-out"></select></label>
+    <div class="row">
+      <label class="field grow">Radio control port <select id="s-port"></select></label>
+      <label class="field">Speed
+        <select id="s-baud">
+          <option>4800</option><option>9600</option><option>19200</option><option selected>38400</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button type="button" id="s-find" class="btn">Find my radio</button>
+      <span class="hint" id="s-find-msg">The FT-710 shows two USB ports; only one answers. Not sure which? Click Find my radio, or use the same port and speed as WSJT-X.</span>
+    </div>
+    <p class="error" id="s-error" hidden></p>
+    <div class="row end">
+      <button type="button" id="s-cancel" class="btn">Cancel</button>
+      <button type="submit" id="s-save" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
