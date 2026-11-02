@@ -88,6 +88,19 @@
         </div>
         <div class="quick" id="quick"></div>
       </div>
+      <div id="logcard" class="logcard" hidden>
+        <strong>Log this QSO?</strong>
+        <div class="row">
+          <label class="field">Call <input id="lg-call" class="mono" maxlength="11" spellcheck="false"></label>
+          <label class="field">Grid <input id="lg-grid" class="mono" maxlength="6" spellcheck="false"></label>
+          <label class="field">Sent <input id="lg-sent" class="mono" maxlength="4" spellcheck="false"></label>
+          <label class="field">Rcvd <input id="lg-rcvd" class="mono" maxlength="4" spellcheck="false"></label>
+        </div>
+        <div class="row end">
+          <button id="lg-skip" class="btn small">Don't log</button>
+          <button id="lg-save" class="btn primary small">Log it</button>
+        </div>
+      </div>
       <label class="field full">Custom message
         <span class="row">
           <input id="custom" class="mono" maxlength="37" placeholder="e.g. CQ POTA KN0BLE EL98" autocomplete="off" spellcheck="false">
@@ -99,6 +112,15 @@
     <section class="card" aria-label="Calling you">
       <h2>Calling you</h2>
       <ul id="calls" class="calls"><li class="empty">No one yet.</li></ul>
+    </section>
+
+    <section class="card" aria-label="Logbook">
+      <div class="card-head">
+        <h2>Logbook</h2>
+        <button id="open-logs" class="btn small">Open log folder</button>
+      </div>
+      <p class="hint" id="log-count">Nothing logged this session yet.</p>
+      <ul id="qsos" class="calls"></ul>
     </section>
 
     <section class="card" aria-label="Levels">
@@ -160,6 +182,22 @@
       <button type="button" id="s-find" class="btn">Find my radio</button>
       <span class="hint" id="s-find-msg">The FT-710 shows two USB ports; only one answers. Not sure which? Click Find my radio, or use the same port and speed as WSJT-X.</span>
     </div>
+    <h3>Logging</h3>
+    <label class="field full">QRZ logbook API key
+      <span class="row tight">
+        <input id="s-qrz" type="password" autocomplete="off" spellcheck="false" placeholder="QRZ: My Logbook › Settings › API key">
+        <button type="button" id="s-qrz-test" class="btn small">Test</button>
+      </span>
+    </label>
+    <p class="hint" id="s-qrz-msg">QRZ uploads need a QRZ subscription. Either way, every QSO is saved to an ADIF file you can upload anywhere.</p>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="s-qrz-up"> Upload each QSO to QRZ</label>
+      <label class="check"><input type="checkbox" id="s-autolog"> Log automatically (don't ask)</label>
+    </div>
+    <div class="row">
+      <label class="field">Power (W) <input id="s-pwr" type="number" min="1" max="1500" placeholder="optional"></label>
+    </div>
+    <h3>App</h3>
     <div class="row">
       <button type="button" id="s-update" class="btn">Check for updates</button>
       <span class="hint" id="s-version"></span>
